@@ -159,33 +159,62 @@ def bits_to_string(bits):
 
 def pad_text(text):
     padding_length = 8 - (len(text) % 8)
-    if padding_length == 8:
-        padding_length = 0
-    return text + chr(padding_length) * padding_length
+    if padding_length == 0:
+        padding_length = 8
+    
+    padding_char = chr(padding_length)
+    return text + padding_char * padding_length
 
 def unpad_text(text):
     if not text:
         return text
+
     padding_length = ord(text[-1])
-    if padding_length < 8:
-        return text[:-padding_length] if padding_length > 0 else text
-    return text
+    
+    if padding_length < 1 or padding_length > 8:
+        for pl in range(1, 9):
+            if len(text) >= pl:
+                last_chars = text[-pl:]
+                if all(c == last_chars[0] for c in last_chars):
+                    return text[:-pl]
+        return text 
+    
+    if len(text) < padding_length:
+        return text
+    
+    expected_padding = text[-padding_length:]
+    for char in expected_padding:
+        if ord(char) != padding_length:
+            return text 
+    
+    return text[:-padding_length]
 
 def des_encrypt(plaintext, key):
     plaintext = pad_text(plaintext)
+
     if len(key) < 8:
         key = key.ljust(8, '0')
     elif len(key) > 8:
         key = key[:8]
+    
     key_bits = string_to_bits(key)
     keys = generate_keys(key_bits)
+    
     plaintext_bits = string_to_bits(plaintext)
+
     ciphertext_bits = ''
     for i in range(0, len(plaintext_bits), 64):
         block = plaintext_bits[i:i+64]
-        if len(block) == 64:
-            ciphertext_bits += des_encrypt_block(block, keys)
-    ciphertext_hex = hex(int(ciphertext_bits, 2))[2:].upper()
+        if len(block) < 64:
+            block = block.ljust(64, '0')
+        ciphertext_bits += des_encrypt_block(block, keys)
+    
+    ciphertext_int = int(ciphertext_bits, 2)
+    ciphertext_hex = hex(ciphertext_int)[2:].upper()
+    
+    if len(ciphertext_hex) % 2 != 0:
+        ciphertext_hex = '0' + ciphertext_hex
+    
     return ciphertext_hex
 
 def des_decrypt(ciphertext_hex, key):
@@ -193,14 +222,28 @@ def des_decrypt(ciphertext_hex, key):
         key = key.ljust(8, '0')
     elif len(key) > 8:
         key = key[:8]
+    
     key_bits = string_to_bits(key)
     keys = generate_keys(key_bits)
-    ciphertext_bits = bin(int(ciphertext_hex, 16))[2:].zfill(len(ciphertext_hex) * 4)
+    
+    if len(ciphertext_hex) % 2 != 0:
+        ciphertext_hex = '0' + ciphertext_hex
+    
+    ciphertext_int = int(ciphertext_hex, 16)
+    ciphertext_bits = bin(ciphertext_int)[2:]
+    
+    bit_length = len(ciphertext_bits)
+    if bit_length % 64 != 0:
+        needed_zeros = 64 - (bit_length % 64)
+        ciphertext_bits = '0' * needed_zeros + ciphertext_bits
+    
     plaintext_bits = ''
     for i in range(0, len(ciphertext_bits), 64):
         block = ciphertext_bits[i:i+64]
         if len(block) == 64:
             plaintext_bits += des_decrypt_block(block, keys)
+    
     plaintext = bits_to_string(plaintext_bits)
     plaintext = unpad_text(plaintext)
+    
     return plaintext
